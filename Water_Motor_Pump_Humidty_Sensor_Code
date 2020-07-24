@@ -1,0 +1,49 @@
+/Objective: Portion of code to run a water pump and humidty sensor code executed on Arduino
+/ If the moisture sensor detect the soil dry, then a logic condition will execute water pump motor 
+/to active and water plants. 
+/ Written by: Andres Cuenca
+/ Date: 05/06/2019
+
+#define enA 9
+#define in1 6
+#define in2 7
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600); 
+  pinMode(enA, OUTPUT); 
+  pinMode(in1, OUTPUT);
+  pinMode(in2, OUTPUT);
+   // Set initial rotation direction
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, HIGH);
+}
+
+void loop() {
+  
+   analogWrite(enA, 200);
+    int moistureVal;
+  
+    //575,574, expose to dry soil 
+    // 589 expose to air
+    // 303 expose to excessive water on soil
+    // 383, 352,354,319, expose to soil and water
+    // 443, 460, 472, 470,semi dry and wet soil
+    
+    //Test Moisture Sensor
+    moistureVal = analogRead(0);
+    Serial.println(moistureVal);  
+    if (moistureVal <= 575 && moistureVal >=443) 
+    {
+      //TURN ON DC Motor
+      digitalWrite(in1, HIGH);
+      digitalWrite(in2, LOW);
+
+    }
+    else if (moistureVal <= 300)
+    {
+      //TURN OFF DC MOTOR
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, LOW);
+    } 
+}
