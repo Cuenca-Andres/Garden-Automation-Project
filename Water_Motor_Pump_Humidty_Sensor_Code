@@ -1,8 +1,8 @@
-/Objective: Portion of code to run a water pump and humidty sensor code executed on Arduino
+/*Objective: Portion of code to run a water pump and humidty sensor code executed on Arduino
 / If the moisture sensor detect the soil dry, then a logic condition will execute water pump motor 
 /to active and water plants. 
 / Written by: Andres Cuenca
-/ Date: 05/06/2019
+Date: 05/06/2019 */
 
 #define enA 9
 #define in1 6
