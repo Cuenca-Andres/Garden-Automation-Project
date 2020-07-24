@@ -1,0 +1,394 @@
+/*
+   This code is for the Garden Automation 
+   Written by: Andres Cuenca
+   05/06/2019
+
+*/
+
+//thermocouple
+#include "max6675.h"
+#define soPIN 22
+#define csPIN 24
+#define sckPIN 26
+
+MAX6675 thermocouple(sckPIN, csPIN, soPIN);
+
+// LCD Display
+#include<Wire.h>
+#include<LiquidCrystal_I2C.h>
+char array1[] = "Start Button";
+char array2[] = " or  Emergency Button";
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+
+// relay
+#define PINOUT_LAMP 4
+#define PINOUT_FAN 3
+#define PINOUT_HEATER 2
+
+//Water Pump
+#define WtrMotor1 6
+#define WtrMotor2 7
+#define ENBWtrMotor 5
+
+int state = 0;
+
+//Ultrasonic Sensor
+const int trigPin = 15;
+const int echoPin = 14;
+long duration;
+int distance;
+
+//Values
+
+//int tempFahren; //temperature value for sensor
+int moistureVal; //value for the mostatesture
+int levelWater;
+
+//Switches
+#define startButton 12
+#define emergencyButton 13
+int e; //emergency
+int s; //start
+
+//LED
+#define REDLED 52
+#define GREENLED 50
+
+void setup() {// put your setup code here, to run once:
+
+  Serial.begin(9600);
+
+  //Water Pump
+  pinMode(WtrMotor1, OUTPUT);
+  pinMode(WtrMotor2, OUTPUT);
+  pinMode(ENBWtrMotor, OUTPUT);
+
+  // LCD Display
+  lcd.init();
+  lcd.backlight();
+
+  // RELAY
+  pinMode (PINOUT_LAMP, OUTPUT);
+  pinMode (PINOUT_FAN, OUTPUT);
+  pinMode (PINOUT_HEATER, OUTPUT);
+  digitalWrite(PINOUT_FAN, HIGH); //KEEP FAN OFF
+  digitalWrite (PINOUT_LAMP, LOW); //KEEP LAMP OFF
+  digitalWrite (PINOUT_HEATER, HIGH); //KEEP HEATER OFF
+
+
+  //Ultrasonic Sensor
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  //Switches
+  pinMode(startButton , INPUT);
+  pinMode(emergencyButton , INPUT);
+
+  //LED
+  pinMode(REDLED, OUTPUT);
+  pinMode(GREENLED, OUTPUT);
+
+
+}//END OF SETUP
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  //create state-machine
+  digitalWrite(PINOUT_LAMP, LOW); //KEEP LAMP OFF
+
+  s = digitalRead(startButton);
+  Serial.print("startButton: "); //LCD
+  //LCDDisplay();
+  lcd.setCursor(1, 0);
+  lcd.print("StartButton");
+  lcd.clear();
+  Serial.println(s);
+  delay(1000);
+  e = digitalRead(emergencyButton);
+  Serial.print("emergencyButton: "); //LCD
+  //LCDDisplay();
+  lcd.setCursor(2, 1);
+  lcd.print("Emergency Button");
+  lcd.clear();
+  Serial.println(e);
+  delay(1000);
+
+  if (s == 1 && e == 0)
+  {
+    delay(1000);
+    state = ReadTemperature(); //call function to compute temperature, return state 4
+    state = CheckSoilMoisture(); //return 5 or 6
+    Serial.print("State: ");
+    Serial.println(state);
+    delay(1000);
+
+   
+
+    if (state == 5 || state == 4) //assume that plant and soil are dry, then water plants
+    {
+      Serial.println("Time to water plants!");
+      delay(1000);
+      Serial.println("Checking water level!");
+      distance = WaterLevel();
+      if (distance >= 10 && distance <= 20)
+      {
+        Serial.println("Full Tank");
+        delay(1000);
+        blinkGREEN();
+        state = WaterPump(); //call waterPump
+      }
+      else if ( distance >= 21 && distance <= 22)
+      {
+        Serial.println("One Fourth Tank!");
+        blinkGREEN();
+        state = WaterPump();
+      }
+      else if (distance >= 23)
+      {
+        Serial.println("Empty!");
+        blinkRED();
+      }
+    }
+  
+  else if (state == 6)
+  {
+    Serial.println("Soil is wet! No water needed!");
+  }
+}
+//if s == 1
+else if ( s == 0 && e == 1)
+{
+  Serial.println("Emergency Mode Activate"); //LCD
+  delay(8000); //wait for 8 seconds
+}
+else if ( s == 1 && e == 1)
+{
+  Serial.println("Turn Emergency off!"); //LCD
+  Serial.println("Turn Start on!"); //LCD
+  delay(3000);
+}
+} //END OF LOOP
+
+/*
+   Read the temperature of the sensor,
+
+*/
+
+int ReadTemperature() //read the value of the temperature
+{
+  int  tempFahren;
+  for (int i = 0; i <= 15; i++)//read for 15 seconds
+  {
+    tempFahren = thermocouple.readFahrenheit();
+    delay(1000);
+    Serial.println(i);
+    Serial.print("Temperature Value: ");
+    Serial.println(tempFahren);
+    Serial.print("Sensor temperature reads: ");
+    Serial.println(tempFahren);
+  }
+  tempFahren = thermocouple.readFahrenheit();
+  if (tempFahren < 80) //if temperature is less than 80, cold
+  {
+    int warm;
+    warm = TurnHeater();//call Heater, warm up the system, 
+    return warm; //return 4
+  }
+  else if (tempFahren <= 85 && tempFahren >= 80) //too hot, so cool down the system
+  {
+    int coolDown;
+    coolDown = TurnFan();
+    return coolDown; //return 4
+  }
+
+
+} //END OF ReadTemperature
+
+/*
+   Turns on the fan
+*/
+
+int TurnFan() //keeps the fan on until the temperature reaches a range temperature
+{
+  int nowCool;
+  int tempFahren;
+  int i = 0;
+  do
+  {
+    tempFahren = thermocouple.readFahrenheit();
+    Serial.print("Temperature: ");
+    Serial.println(tempFahren);
+    Serial.println(i);
+    Serial.println("FAN ON!");
+    digitalWrite(PINOUT_FAN, LOW);
+    Serial.println("Heater OFF!");
+    digitalWrite (PINOUT_HEATER, HIGH); //KEEP HEATER OFF
+    delay(1000);
+    i++;
+  } while (tempFahren > 79  && tempFahren <= 82); //At this range, keep fan running
+  Serial.println("FAN OFF!");
+  digitalWrite(PINOUT_FAN, HIGH); //Turn the Fan OFF!
+  return nowCool = 4;
+}
+
+
+/*
+   Turn the heater on to keep Plants warm
+*/
+
+
+int TurnHeater()
+{
+  int  tempFahren;
+  int i = 0;
+  do {
+    Serial.println("Heater ON!");
+    digitalWrite (PINOUT_HEATER, HIGH); //KEEP HEATER ON
+    tempFahren = thermocouple.readFahrenheit();
+    Serial.println(i);
+    Serial.print("Temperature Value: ");
+    Serial.println(tempFahren);
+    delay(1000);
+    i++;
+  } while (tempFahren < 79);
+  digitalWrite( PINOUT_HEATER, HIGH);
+
+  return state = 4;
+} //END OF FUNCTION
+
+
+
+/*
+   Check the moisture of the soil
+*/
+int CheckSoilMoisture()
+{
+
+  for (int i = 0; i <= 30; i++)
+  {
+    delay(500);
+    moistureVal = analogRead(A2); //read from pstaten A2
+    Serial.print("Moisture Value: ");
+    Serial.println(moistureVal);
+    Serial.println(i);
+  }
+
+  if (moistureVal >= 410 && moistureVal <= 600) //dry values
+  {
+    int dry = 5;
+    return dry;
+  }
+  else if (moistureVal >= 320 && moistureVal <= 410) //wet values
+  {
+    int wet = 6;
+    return wet;
+  }
+
+} //END OF checkSoilMoisture Function
+
+/*
+   Turn ON and off the water pump
+*/
+
+
+int  WaterPump()
+{
+  //TURN ON DC Motor
+  do
+  { //read from pstaten A2
+    //turn MOTOR ON
+    analogWrite(ENBWtrMotor, 250); //send a pwm signal
+    digitalWrite(WtrMotor1, HIGH); // turn on motor pump
+    digitalWrite(WtrMotor2, LOW);
+    moistureVal = analogRead(A2);
+    Serial.print("Moisture: ");
+    Serial.println(moistureVal);
+    distance = WaterLevel(); //Read Water Level
+    Serial.print("Water Level: ");
+    Serial.println(distance);
+    delay(900);
+  } while ( moistureVal >= 380 && distance <=  22 );
+  //TURN MOTOR OFF
+
+  //TURN OFF Water Pump
+  digitalWrite(WtrMotor1, LOW);
+  digitalWrite(WtrMotor2, LOW);
+  return 5;
+}//END OF WaterPump
+
+/*
+   Check the water level of the reservior
+
+*/
+int WaterLevel()
+{
+  Serial.println("Calling WaterLevel Function!");
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * .034 / 2;
+  delay(100);
+  Serial.print("Water Level: ");
+  Serial.println(distance);
+
+  return distance;
+}//END OF WaterLevel
+
+
+int EMERGENCYSTOP()
+{
+  int i;
+  i = digitalRead(emergencyButton);
+  //SHOW ON LCD PLEASE WAIT...RESETTING
+  return i;
+}
+
+void LCDDisplay()
+{
+
+  lcd.setCursor(15, 0); // set the cursor to column 15, line 0
+  for (int positionCounter1 = 0; positionCounter1 < 26; positionCounter1++)
+  {
+    lcd.scrollDisplayLeft(); //Scrolls the contents of the display one space to the left.
+    lcd.print(array1[positionCounter1]); // Print a message to the LCD.
+    delay(500); //wait for 250 microseconds
+  }
+  lcd.clear(); //Clears the LCD screen and positions the cursor in the upper-left  corner.
+  lcd.setCursor(15, 1); // set the cursor to column 15, line 1
+  for (int positionCounter = 0; positionCounter < 26; positionCounter++)
+  {
+    lcd.scrollDisplayLeft(); //Scrolls the contents of the display one space to the left.
+    lcd.print(array2[positionCounter]); // Print a message to the LCD.
+    delay(500); //wait for 250 microseconds
+  }
+  lcd.clear(); //Clears the LCD screen and positions the cursor in the upper-left corner.
+}
+
+void blinkRED()
+{
+  //Serial.println("Empty!");
+  for (int i = 0; i <= 12; i++);
+  {
+    digitalWrite(REDLED, HIGH);
+    delay(100);
+    digitalWrite(REDLED, LOW);
+  }
+
+}
+
+void blinkGREEN()
+{
+  //Serial.println("Empty!");
+  for (int i = 0; i <= 5; i++);
+  {
+    digitalWrite(GREENLED, HIGH);
+    delay(100);
+    digitalWrite(GREENLED, LOW);
+  }
+
+}
+
