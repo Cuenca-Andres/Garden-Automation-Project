@@ -1,6 +1,6 @@
-/Objective: Use as part of the garden automation project
-/ A thermistor is applied for reading and checking the enclosure temperature.
-/Written by: Andres Cuenca
+/*Objective: Use as part of the garden automation project
+ A thermistor is applied for reading and checking the enclosure temperature.
+Written by: Andres Cuenca */ 
 
 int ThermistorPin = 0;
 int Vo;
